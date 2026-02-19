@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SherpaOnnx TTS 串流測試 (Auto-Detect)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            background: #f9f9f9;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: bold;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1rem;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        #status {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: #e9ecef;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            display: none;
+        }
+
+        .playing {
+            color: #28a745;
+            font-weight: bold;
+        }
+
+        .error {
+            color: #dc3545;
+        }
+
+        .info {
+            color: #17a2b8;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🎙️ TTS 串流測試 (Auto-Detect)</h1>
+        <p>此頁面測試 <code>POST /v1/audio/speech</code> 的 Raw Streaming 功能 (Format: f32le)。</p>
+        <p class="info">ℹ️ 系統會自動偵測模型 Sample Rate (透過 X-Sherpa-Sample-Rate 標頭)。</p>
+
+        <div class="form-group">
+            <label for="text">輸入文字:</label>
+            <textarea id="text" rows="3">Hello 你好！這是一個中英文混合的測試。This is a streaming test using SherpaOnnx.</textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="voice">Voice / Model:</label>
+            <select id="voice">
+                <option value="" disabled selected>載入中...</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="sid">Speaker ID / Name:</label>
+            <input type="text" id="sid" value="0" placeholder="0 or af_bella">
+        </div>
+
+        <div class="form-group">
+            <label for="speed">語速 (Speed):</label>
+            <input type="number" id="speed" value="1.0" step="0.1" min="0.1" max="3.0">
+        </div>
+
+        <button id="generateBtn" onclick="generateStream()" disabled>🚀 開始串流生成 (Loading...)</button>
+
+        <div id="status"></div>
+    </div>
+
+    <script>
+        let audioContext;
+        let nextStartTime = 0;
+        let pendingBuffer = new Uint8Array(0);
+
+        // Fetch models on load
+        window.addEventListener('DOMContentLoaded', async () => {
+            const voiceSelect = document.getElementById('voice');
+            const sidInput = document.getElementById('sid');
+            const btn = document.getElementById('generateBtn');
+
+            try {
+                const res = await fetch('/health');
+                const data = await res.json();
+
+                voiceSelect.innerHTML = ''; // Request cleared
+
+                if (data.loadedModels && data.loadedModels.length > 0) {
+                    data.loadedModels.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = `${model.name} (${model.numSpeakers} speakers)`;
+                        option.dataset.speakers = model.numSpeakers;
+
+                        if (model.name === data.defaultVoice) {
+                            option.selected = true;
+                            updateSidPlaceholder(model.numSpeakers);
+                        }
+                        voiceSelect.appendChild(option);
+                    });
+                    btn.disabled = false;
+                    btn.textContent = '🚀 開始串流生成';
+                } else {
+                    const option = document.createElement('option');
+                    option.textContent = "未找到模型";
+                    voiceSelect.appendChild(option);
+                }
+            } catch (err) {
+                console.error("Failed to load models", err);
+                voiceSelect.innerHTML = '<option>載入失敗 (請確認服務)</option>';
+            }
+
+            // Update SID hint on change
+            voiceSelect.addEventListener('change', () => {
+                const selectedOption = voiceSelect.options[voiceSelect.selectedIndex];
+                const speakers = parseInt(selectedOption.dataset.speakers || 0);
+                updateSidPlaceholder(speakers);
+            });
+
+            function updateSidPlaceholder(count) {
+                const label = document.querySelector('label[for="sid"]');
+                const selectedModel = voiceSelect.value;
+
+                if (count > 1) {
+                    label.textContent = `Speaker ID (0 - ${count - 1}):`;
+                    sidInput.placeholder = `0 - ${count - 1}`;
+                    sidInput.min = 0;
+                    sidInput.max = count - 1;
+
+                    // Kokoro Hint
+                    if (selectedModel.includes('kokoro')) {
+                        const hintDiv = document.getElementById('kokoro-hint') || document.createElement('div');
+                        hintDiv.id = 'kokoro-hint';
+                        hintDiv.style.fontSize = '0.85rem';
+                        hintDiv.style.color = '#666';
+                        hintDiv.style.marginTop = '0.25rem';
+                        hintDiv.innerHTML = '💡 <b>Kokoro 常用 ID:</b> 0=af_alloy, 1=af_aoede, 2=af_bella, 3=af_jessica, 11=af_nicole, 21=af_sky, 30=am_adam, 33=am_michael';
+
+                        if (!document.getElementById('kokoro-hint')) {
+                            sidInput.parentNode.appendChild(hintDiv);
+                        }
+                    } else {
+                        const existingHint = document.getElementById('kokoro-hint');
+                        if (existingHint) existingHint.remove();
+                    }
+
+                } else {
+                    label.textContent = `Speaker ID (Single Speaker):`;
+                    sidInput.value = 0;
+                    sidInput.placeholder = "0";
+                    sidInput.min = 0;
+                    sidInput.max = 0;
+                    const existingHint = document.getElementById('kokoro-hint');
+                    if (existingHint) existingHint.remove();
+                }
+            }
+        });
+
+        async function generateStream() {
+            const btn = document.getElementById('generateBtn');
+            const statusDiv = document.getElementById('status');
+            const text = document.getElementById('text').value;
+            const voice = document.getElementById('voice').value;
+            const sid = document.getElementById('sid').value; // Keep as string (might be "af_bella")
+            const speed = parseFloat(document.getElementById('speed').value);
+
+            btn.disabled = true;
+            statusDiv.style.display = 'block';
+            statusDiv.className = '';
+            statusDiv.textContent = '🔄 連線中...';
+            pendingBuffer = new Uint8Array(0); // Reset buffer
+
+            try {
+                const response = await fetch('/v1/audio/speech', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        input: text,
+                        model: voice, // Dropdown value (Model Name)
+                        voice: sid,   // Input value (ID or Name)
+                        speed: speed,
+                        response_format: 'pcm'
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP Error: ${response.status}`);
+                }
+
+                // Auto-detect Sample Rate from Header
+                const serverSampleRate = response.headers.get('X-Sherpa-Sample-Rate');
+                let sampleRate = serverSampleRate ? parseInt(serverSampleRate) : 22050; // Fallback
+                statusDiv.textContent += `\n🔊 偵測到 Sample Rate: ${sampleRate}Hz`;
+
+                // Initialize AudioContext with detected rate
+                if (audioContext) {
+                    audioContext.close();
+                }
+                audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: sampleRate });
+                nextStartTime = audioContext.currentTime;
+
+                statusDiv.textContent += '\n📦 接收串流中...';
+                const reader = response.body.getReader();
+                let receivedBytes = 0;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    if (value && value.length > 0) {
+                        receivedBytes += value.length;
+                        processChunk(value, sampleRate);
+                    }
+                }
+
+                statusDiv.textContent += '\n✅ 串流結束 Total: ' + receivedBytes + ' bytes';
+                btn.disabled = false;
+
+            } catch (err) {
+                console.error(err);
+                statusDiv.className = 'error';
+                statusDiv.textContent = '❌ 錯誤: ' + err.message;
+                btn.disabled = false;
+            }
+        }
+
+        function processChunk(newBytes, sampleRate) {
+            // Combine with pending buffer
+            const totalLength = pendingBuffer.length + newBytes.length;
+            const combined = new Uint8Array(totalLength);
+            combined.set(pendingBuffer);
+            combined.set(newBytes, pendingBuffer.length);
+
+            // Ensure we process multiples of 4 bytes (Float32)
+            const remainder = totalLength % 4;
+            const processLength = totalLength - remainder;
+
+            if (processLength === 0) {
+                pendingBuffer = combined;
+                return;
+            }
+
+            const bytesToProcess = combined.slice(0, processLength);
+            pendingBuffer = combined.slice(processLength);
+
+            // Convert to Float32Array
+            const float32Array = new Float32Array(bytesToProcess.buffer, bytesToProcess.byteOffset, bytesToProcess.byteLength / 4);
+
+            playFloat32Data(float32Array, sampleRate);
+        }
+
+        function playFloat32Data(floatArray, sampleRate) {
+            const buffer = audioContext.createBuffer(1, floatArray.length, sampleRate);
+            buffer.getChannelData(0).set(floatArray);
+
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+
+            const latency = 0.05;
+            if (nextStartTime < audioContext.currentTime + latency) {
+                nextStartTime = audioContext.currentTime + latency;
+            }
+            source.start(nextStartTime);
+            nextStartTime += buffer.duration;
+        }
+    </script>
+</body>
+
+</html>

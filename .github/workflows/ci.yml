@@ -1,0 +1,80 @@
+name: Build and Test
+
+on:
+  push:
+    branches: ["main"]
+    paths-ignore: # 忽略文件修改，節省資源
+      - "**.md"
+      - "docs/**"
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch: # 允許手動點擊觸發
+  release:
+    types: [published]
+
+jobs:
+  build-and-test: # 名字改得更精確
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # [sherpa-onnx 專用] 安裝原生依賴
+      # 確保 dotnet test 載入 AI 模型庫時不會缺檔報錯
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgomp1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+          # cache: true (Disabled: Requires packages.lock.json which is not enabled by default)
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # 測試時使用 Verbosity 不要太吵
+      - name: Test
+        run: dotnet test --no-build --configuration Release --verbosity normal
+
+  deploy-image:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".dockerignore" />
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="compose.yml" />
+    <File Path="Dockerfile" />
+    <File Path="README.md" />
+    <File Path="setup_models.sh" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/SherpaOnnxTts/SherpaOnnxTts.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SherpaOnnxTts.Tests/SherpaOnnxTts.Tests.csproj" />
+  </Folder>
+</Solution>
