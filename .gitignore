@@ -1,0 +1,72 @@
+## Visual Studio & .NET Ignored Files
+## Based on https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
+
+## -- User-specific files --
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+## -- Build results --
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Ll]og/
+[Ll]ogs/
+.vs/
+Generated\ Files/
+
+## -- Test Results --
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+TestResult.xml
+test_output.txt
+test_results.xml
+*.trx
+*.coverage
+*.coveragexml
+TestResults/
+
+## -- NUnit --
+*.VisualState.xml
+
+## -- Visual Studio Code --
+.vscode/
+
+## -- Mac / Linux --
+.DS_Store
+Thumbs.db
+
+## -- Project Specific --
+# Large Models
+volumes/models/*
+!volumes/models/.gitkeep
+
+# Temporary Downloads
+tmp_download/
+
+# Generated Audio Files
+*.wav
+*.pcm
+
+# Python / Scripts Artifacts (Legacy or Helper)
+__pycache__/
+*.py[cod]
+.venv
+venv/
+env/
+
+# Docker
+# .dockerignore handles build context, but we ignore local artifacts too
+
