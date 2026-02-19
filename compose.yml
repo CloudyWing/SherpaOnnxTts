@@ -1,0 +1,26 @@
+services:
+  sherpa-onnx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sherpa-onnx
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "5364:5364"
+    volumes:
+      - ./volumes/models:/app/models:ro
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5364/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

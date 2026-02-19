@@ -1,0 +1,42 @@
+# --- 1. Version Control & Metadata ---
+.git/
+.gitignore
+.gitattributes
+
+# --- 2. IDE & Editor Specific ---
+.vs/
+.vscode/
+.idea/
+*.suo
+*.user
+*.slnx
+
+# --- 3. Build & Dependency Artifacts ---
+**/bin/
+**/obj/
+**/out/
+
+# --- 4. Test & Documentation ---
+tests/
+**/*Tests/
+docs/
+*.md
+
+# --- 5. Data & Models (Crucial for Context Size) ---
+volumes/
+*.onnx
+tmp_download/
+setup_models.sh
+
+# --- 6. DevOps Configuration ---
+.github/
+.devops/
+ci.yml
+docker-compose*
+Dockerfile*
+.dockerignore
+scripts/
+
+# --- 7. System Files ---
+**/.DS_Store
+**/Thumbs.db
